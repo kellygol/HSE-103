@@ -35,7 +35,6 @@ dirty_file1$C4 <- as.integer(dirty_file1$C4)
 dirty_file1$C8 <- as.integer(dirty_file1$C8)
 dirty_file1$C7 <- as.integer(dirty_file1$C7)
 
-
 glimpse(dirty_file1)
   
 hist(dirty_file1$x)
