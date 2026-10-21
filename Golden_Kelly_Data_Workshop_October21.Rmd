@@ -1,0 +1,23 @@
+---
+title: "Golden_Kelly_Data_Workshop_October21"
+author: "Kelly Golden"
+date: "2026-10-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+dirty_file1 <- read.csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Classwork/Week 6/HSE103_DataWorkshop_File1.csv")
+
+unclean_file2 <- read.csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Classwork/Week 6/HSE103_DataWorkshop_File2.csv")
+
+View(dirty_file1)
+
+```
+
+
