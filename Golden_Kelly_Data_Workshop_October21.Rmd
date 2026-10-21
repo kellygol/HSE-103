@@ -7,17 +7,47 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
 ```
 
 
-
+1.Load in the data set (File 1) and check the data (use the View() function to see the full data set).
+Assess the data type for each variable and perform any necessary preliminary data cleaning. Generate a histogram of the distribution of each variable and check missingness.
 ```{r}
 dirty_file1 <- read.csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Classwork/Week 6/HSE103_DataWorkshop_File1.csv")
 
 unclean_file2 <- read.csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Classwork/Week 6/HSE103_DataWorkshop_File2.csv")
 
 View(dirty_file1)
-
+head(dirty_file1)
 ```
+
+
+```{r}
+
+#changed all to integers from characters
+dirty_file1$C2 <- as.integer(dirty_file1$C2)
+dirty_file1$C3 <- as.integer(sub("^X_", "",dirty_file1$C3)) #removed missing X_
+dirty_file1$C6 <- as.integer(sub(-99.000, "NA",dirty_file1$C6))#sub missing values of -99 as "NA"
+dirty_file1$C5 <- as.integer(sub(-99.000, "NA",dirty_file1$C5))#sub missing values of -99 as "NA"
+dirty_file1$C1 <- as.integer(dirty_file1$C1)
+dirty_file1$C4 <- as.integer(dirty_file1$C4)
+dirty_file1$C8 <- as.integer(dirty_file1$C8)
+dirty_file1$C7 <- as.integer(dirty_file1$C7)
+
+
+glimpse(dirty_file1)
+  
+hist(dirty_file1$x)
+hist(dirty_file1$C2)
+hist(dirty_file1$C3)
+hist(dirty_file1$C6)
+hist(dirty_file1$C5)
+hist(dirty_file1$C1)
+hist(dirty_file1$C4)
+hist(dirty_file1$C8)
+hist(dirty_file1$C7)
+```
+
 
 
