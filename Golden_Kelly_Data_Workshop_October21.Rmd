@@ -29,7 +29,7 @@ head(dirty_file1)
 dirty_file1$C2 <- as.integer(dirty_file1$C2)
 dirty_file1$C3 <- as.integer(sub("^X_", "",dirty_file1$C3)) #removed missing X_
 dirty_file1$C6 <- as.integer(sub(-99.000, "NA",dirty_file1$C6))#sub missing values of -99 as "NA"
-dirty_file1$C5 <- as.integer(sub(-99.000, "NA",dirty_file1$C5))#sub missing values of -99 as "NA"
+dirty_file1$C5 <- as.integer(sub(-99.000, "NA",dirty_file1$C5))#sub missing values of -99 as "NA" 
 dirty_file1$C1 <- as.integer(dirty_file1$C1)
 dirty_file1$C4 <- as.integer(dirty_file1$C4)
 dirty_file1$C8 <- as.integer(dirty_file1$C8)
@@ -48,5 +48,9 @@ hist(dirty_file1$C8)
 hist(dirty_file1$C7)
 ```
 
+
+```{r}
+
+```
 
 
