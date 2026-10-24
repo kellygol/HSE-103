@@ -1,0 +1,83 @@
+---
+title: "Golden_Kelly_Submission_1"
+author: "Kelly Golden"
+date: "2026-10-24"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+
+```
+
+
+Variables Chosen: 
+
+I’m looking at CXCR2, a receptor on neutrophils that responds to the IL-8 inflammatory signal. Inflammation is thought to play a role in preeclampsia, which is what made CXCR2 an interesting gene to explore. My continuous covariate is maternal vitamin D (mat_vitD), measured as 25-hydroxyvitamin D in ng/mL at baseline.
+
+The two categorical covariates are pregnancy outcome (preg_preeclampsia: normal vs. preeclampsia) and obesity status. I created obesity status from maternal BMI (mat_BMI), using the WHO cut point: anyone with a BMI of 30 kg/m² or higher is classified as obese.
+
+
+
+```{r}
+# read_csv() automatically strips the invisible character (BOM) at the start
+# of the covariate file, so the first column is named "subjectID" correctly.
+covar <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_covar.csv", show_col_types = FALSE)
+
+# Gene expression: rows = probe IDs, columns = samples (GEO IDs).
+# The first column has no name in the file, so we rename it PROBEID.
+geneExp <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_geneExpression.csv", show_col_types = FALSE) %>%
+  rename(PROBEID = 1)
+
+# Linker file: probe ID -> gene name
+geneNames <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_geneNames.csv", show_col_types = FALSE)
+
+dim(covar)     # 157 subjects x 10 variables
+dim(geneExp)   # 500 probes x 158 columns (PROBEID + 157 samples)
+
+```
+
+
+Cleaning! Every covariate value except the IDs has a text label in front of it, 
+like `"age_years: 31...."` or `"pregnancy_condition: Normal"`. I have to remove
+everything up to and including the `": "` and then convert to the right type 
+of variable.
+
+```{r clean-covar}
+#Look at the raw format first
+head(covar$mat_age_yrs, 3)
+
+#columns 3 to 10 have the "label: value"
+for (col in names(covar)[3:10]) {
+  covar[[col]] <- sub(".*: ", "", covar[[col]])   #keep only the part after ": "
+}
+
+#convert from text to numbers
+numVars <- c("mat_age_yrs", "delivery_gestAge_wks",
+             "sampleCollection_gestAge_wks", "mat_BMI", "mat_vitD")
+for (col in numVars) {
+  covar[[col]] <- as.numeric(covar[[col]])
+}
+
+#convert categorical variables to factors with clear labels
+covar$preg_preeclampsia <- factor(covar$preg_preeclampsia,
+                                  levels = c("Normal", "Preeclampsia"))
+covar$mat_asthma <- factor(covar$mat_asthma, levels = c(0, 1),
+                           labels = c("Healthy", "Asthma"))
+covar$batch_Microarray <- factor(covar$batch_Microarray)
+
+#derived categorical variable: obesity status from BMI (WHO: BMI >= 30)
+covar$obesity <- factor(ifelse(covar$mat_BMI >= 30, "Obese", "Not obese"),
+                        levels = c("Not obese", "Obese"))
+
+#confirm no missing values were created by the conversions
+colSums(is.na(covar))
+summary(covar[, c(numVars, "preg_preeclampsia", "obesity")])
+```
+
+
+
+
