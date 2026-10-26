@@ -2,7 +2,10 @@
 title: "Golden_Kelly_Submission_1"
 author: "Kelly Golden"
 date: "2026-10-24"
-output: pdf_document
+output:
+  pdf_document:
+    fig_caption: true
+    latex_engine: xelatex
 ---
 
 ```{r setup, include=FALSE}
@@ -10,9 +13,11 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(ggplot2)
+library(tidyverse)
 
 ```
 
+Resources Used: Claude (Anthropic) was used to help me determine which logical path made the most sense and navigate my code errors. 
 
 Variables Chosen: 
 
@@ -25,23 +30,23 @@ Upload the data and clean a little of it up
 ```{r}
 #read_csv() automatically strips the invisible character (BOM) at the start
 #of the covariate file, so the first column is named "subjectID" correctly.
-covar <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_covar.csv", show_col_types = FALSE)
+covar <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_covar.csv", show_col_types = FALSE, name_repair = "unique_quiet")
 
 #gene expression: rows = probe IDs, columns = samples (GEO IDs).
 #the first column has no name in the file, so rename it PROBEID.
-geneExp <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_geneExpression.csv", show_col_types = FALSE) %>%
+geneExp <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_geneExpression.csv", show_col_types = FALSE,name_repair = "unique_quiet") %>%
   rename(PROBEID = 1)
 
 #linker file: probe ID -> gene name
-geneNames <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_geneNames.csv", show_col_types = FALSE)
+geneNames <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_geneNames.csv", show_col_types = FALSE, name_repair = "unique_quiet")
 
-dim(covar)     #157 subjects x 10 variables
-dim(geneExp)   #500 probes x 158 columns (PROBEID + 157 samples)
+dim(covar)
+dim(geneExp)   
 
 ```
 
 
-Cleaning! Every covariate value except the IDs has a text label in front of it, 
+Cleaning! Each covariate value (except the IDs) has a text label in front of it, 
 like `"age_years: 31...."` or `"pregnancy_condition: Normal"`. I have to remove
 everything up to and including the `": "` and then convert to the right type 
 of variable.
@@ -53,7 +58,7 @@ head(covar$mat_age_yrs, 3)
 #columns 3 to 10 have the "label: value"
 for (col in names(covar)[3:10]) {
   covar[[col]] <- sub(".*: ", "", covar[[col]])   #keep only the part after ": "
-}
+}#Claude helped with this cleaning code
 
 #convert from text to numbers
 numVars <- c("mat_age_yrs", "delivery_gestAge_wks",
@@ -62,7 +67,7 @@ for (col in numVars) {
   covar[[col]] <- as.numeric(covar[[col]])
 }
 
-#convert categorical variables to factors with clear labels
+#convert categorical variables to factors with clear labels (Claude helped here)
 covar$preg_preeclampsia <- factor(covar$preg_preeclampsia,
                                   levels = c("Normal", "Preeclampsia"))
 covar$mat_asthma <- factor(covar$mat_asthma, levels = c(0, 1),
@@ -73,7 +78,7 @@ covar$batch_Microarray <- factor(covar$batch_Microarray)
 covar$obesity <- factor(ifelse(covar$mat_BMI >= 30, "Obese", "Not obese"),
                         levels = c("Not obese", "Obese"))
 
-#confirm no missing values were created by the conversions
+#confirm no missing values were created by the conversions (Claude helped here)
 colSums(is.na(covar))
 summary(covar[, c(numVars, "preg_preeclampsia", "obesity")])
 ```
@@ -82,24 +87,92 @@ summary(covar[, c(numVars, "preg_preeclampsia", "obesity")])
 
 Match the probes to the ID names
 ```{r}
+#Claude helped me what functions to apply for this section to get to the desired
+#result
 
-#for each row/probe in the expression data match its gene name in the linker
-rownames(geneExp)[1:3]
-probeMatch <- match(rownames(geneExp), geneNames$PROBEID)
+#confirm every probe in the expression data has a gene name in the linker file
+stopifnot(all(geneExp$PROBEID %in% geneNames$PROBEID))
 
-#check every probe found a gene name and no gene name is used twice
-stopifnot(!any(is.na(probeMatch)))
-stopifnot(!any(duplicated(geneNames$GENE[probeMatch])))
+geneExp <- geneExp %>%
+  left_join(geneNames, by = "PROBEID") %>%   #add a GENE column
+  relocate(GENE, .after = PROBEID)           #move it next to PROBEID
 
-#replace probe IDs with gene names
-rownames(geneExp) <- geneNames$GENE[probeMatch]
+#ensure no gene name appears twice (each gene is one probe)
+stopifnot(!any(duplicated(geneExp$GENE)))
 
 ```
 
 
-Combine expression with covariates
+Merge: The expression data has samples as columns, while the covariates have samples as rows. Reshaped the expression data to long format (one row per gene per sample), kept CXCR2, and joined it to the covariates by `geoID`.
+```{r merge}
+gene <- "CXCR2"
 
+geneLong <- geneExp %>%
+  select(-PROBEID) %>%
+  pivot_longer(cols = -GENE, names_to = "geoID", values_to = "expression")
 
+dat <- geneLong %>%
+  filter(GENE == gene) %>%
+  inner_join(covar, by = "geoID")
 
+#verify same samples in both files, none lost or duplicated (Claude helped here)
+stopifnot(setequal(covar$geoID, unique(geneLong$geoID)))
+stopifnot(nrow(dat) == nrow(covar), !any(duplicated(dat$geoID)))
 
+#checking one sample to confirm the joined value=raw value (Claude helped here)
+check_id <- dat$geoID[1]
+raw_value <- geneExp %>% filter(GENE == gene) %>% pull(all_of(check_id))
+stopifnot(dat$expression[1] == raw_value)
 
+nrow(dat)
+
+```
+
+Plot theme!
+```{r}
+theme_pub <- theme_classic(base_size = 12) +
+  theme(axis.title   = element_text(face = "bold"),
+        axis.text    = element_text(color = "black"),
+        legend.title = element_text(face = "bold"),
+        legend.position = "top")
+
+obesityColors <- c("Not obese" = "#56B4E9", "Obese" = "#E69F00")
+```
+
+Plot 1: Histogram of CXCR2 expression
+```{r histogram, fig.cap="\\textbf{Distribution of CXCR2 expression.} Expression values from 157 pregnant participants are log2-transformed normalized intensities from the Affymetrix Human Gene 1.0 ST Array, measured in blood collected at 10–19 weeks' gestation."}
+
+ggplot(dat, aes(x = expression)) +
+  geom_histogram(bins = 25, fill = "#0072B2", color = "white") +
+  labs(x = "CXCR2 expression (log2 normalized intensity)",
+       y = "Number of participants") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  #bars sit on the axis
+  theme_pub
+
+```
+
+Plot 2: Scatterplot of vitamin D vs. CXCR2 expression
+```{r scatter, fig.cap="\\textbf{Maternal vitamin D vs. CXCR2 expression.} Each point is one participant (n = 157). The black line is a linear regression fit, and the gray band is its 95\\% confidence interval."}
+ggplot(dat, aes(x = mat_vitD, y = expression)) +
+  geom_point(color = "#0072B2", alpha = 0.7, size = 2) +
+  geom_smooth(method = "lm", se = TRUE, color = "black", linewidth = 0.8) +
+  labs(x = "Maternal 25-hydroxyvitamin D (ng/mL)",
+       y = "CXCR2 expression (log2)") +
+  theme_pub
+```
+
+Plot 3: Boxplot of CXCR2 by pregnancy outcome and obesity status
+```{r boxplot, fig.cap="\\textbf{CXCR2 expression by pregnancy outcome and obesity status.} Obesity was defined as BMI ≥ 30 kg/m². Boxes show the median and interquartile range, whiskers extend to 1.5 × IQR, and points are individual participants. Group sizes: Normal/not obese n = 79, Normal/obese n = 31, Preeclampsia/not obese n = 21, Preeclampsia/obese n = 26."}
+
+ggplot(dat, aes(x = preg_preeclampsia, y = expression, fill = obesity)) +
+  geom_boxplot(outlier.shape = NA, width = 0.6,
+               position = position_dodge(width = 0.7)) +
+  #show the participants on top of the boxes
+  geom_point(position = position_jitterdodge(jitter.width = 0.15,
+                                             dodge.width = 0.7),
+             size = 1.2, alpha = 0.5) +
+  scale_fill_manual(values = obesityColors, name = "Obesity status") +
+  labs(x = "Pregnancy outcome", y = "CXCR2 expression (log2)") +
+  theme_pub
+
+```
