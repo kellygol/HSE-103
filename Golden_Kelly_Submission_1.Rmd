@@ -21,22 +21,22 @@ I’m looking at CXCR2, a receptor on neutrophils that responds to the IL-8 infl
 The two categorical covariates are pregnancy outcome (preg_preeclampsia: normal vs. preeclampsia) and obesity status. I created obesity status from maternal BMI (mat_BMI), using the WHO cut point: anyone with a BMI of 30 kg/m² or higher is classified as obese.
 
 
-
+Upload the data and clean a little of it up
 ```{r}
-# read_csv() automatically strips the invisible character (BOM) at the start
-# of the covariate file, so the first column is named "subjectID" correctly.
+#read_csv() automatically strips the invisible character (BOM) at the start
+#of the covariate file, so the first column is named "subjectID" correctly.
 covar <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_covar.csv", show_col_types = FALSE)
 
-# Gene expression: rows = probe IDs, columns = samples (GEO IDs).
-# The first column has no name in the file, so we rename it PROBEID.
+#gene expression: rows = probe IDs, columns = samples (GEO IDs).
+#the first column has no name in the file, so rename it PROBEID.
 geneExp <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_geneExpression.csv", show_col_types = FALSE) %>%
   rename(PROBEID = 1)
 
-# Linker file: probe ID -> gene name
+#linker file: probe ID -> gene name
 geneNames <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/GSE85307_geneNames.csv", show_col_types = FALSE)
 
-dim(covar)     # 157 subjects x 10 variables
-dim(geneExp)   # 500 probes x 158 columns (PROBEID + 157 samples)
+dim(covar)     #157 subjects x 10 variables
+dim(geneExp)   #500 probes x 158 columns (PROBEID + 157 samples)
 
 ```
 
@@ -77,6 +77,28 @@ covar$obesity <- factor(ifelse(covar$mat_BMI >= 30, "Obese", "Not obese"),
 colSums(is.na(covar))
 summary(covar[, c(numVars, "preg_preeclampsia", "obesity")])
 ```
+
+
+
+Match the probes to the ID names
+```{r}
+
+#for each row/probe in the expression data match its gene name in the linker
+rownames(geneExp)[1:3]
+probeMatch <- match(rownames(geneExp), geneNames$PROBEID)
+
+#check every probe found a gene name and no gene name is used twice
+stopifnot(!any(is.na(probeMatch)))
+stopifnot(!any(duplicated(geneNames$GENE[probeMatch])))
+
+#replace probe IDs with gene names
+rownames(geneExp) <- geneNames$GENE[probeMatch]
+
+```
+
+
+Combine expression with covariates
+
 
 
 
