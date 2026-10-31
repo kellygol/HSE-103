@@ -1,0 +1,233 @@
+---
+title: "Golden_Kelly_Submission_2"
+author: "Kelly Golden"
+date: "2026-10-30"
+output:
+  pdf_document:
+    fig_caption: true
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(tidyverse)
+
+```
+
+Resources Used: Claude (Anthropic) was used in this assignment as noted in the code comments throughout. It was also used to help select genes of personal interest, improve organization, and debug code errors.
+
+Variables Chosen: I’m looking at CXCR2, which is a receptor on neutrophils that responds to the IL-8 inflammatory signal. Inflammation is thought to play a role in preeclampsia, which is what made CXCR2 an interesting gene to explore. My continuous covariate is maternal vitamin D (mat_vitD), measured as 25-hydroxyvitamin D in ng/mL at baseline. The two categorical covariates are pregnancy outcome (preg_preeclampsia: normal vs. preeclampsia) and obesity status. I created obesity status from maternal BMI (mat_BMI), using the WHO cut point: anyone with a BMI of 30 kg/m² or higher is classified as obese.
+
+For submission 2, I added NR0B2 and TRIB1. NR0B2 is a nuclear receptor that helps regulate bile acid, cholesterol, and glucose metabolism, and variants in it have been linked to obesity and early-onset type 2 diabetes. TRIB1 is a signaling regulator that controls fat production in the liver, and large genetic studies have tied it to blood lipid levels and fatty liver disease. Both connect to my broader interest in PFAS, which are known to disrupt nuclear-receptor signaling and are consistently associated with higher cholesterol. I chose these genes to contrast with CXCR2: CXCR2 is an immune gene highly expressed in the neutrophils in maternal blood, NR0B2 is a metabolic gene expressed mainly in the liver, and TRIB1 spans both, with roles in lipid metabolism and in immune cells. Comparing the three lets me see whether the vitamin D and obesity patterns seen for CXCR2 also appear in metabolic genes. Because NR0B2 is expressed mostly in the liver, I expected its levels in blood to be low and to vary little across participants.
+
+## Load the data
+```{r}
+
+# read_csv() automatically strips the invisible character (BOM) at the start
+# of the covariate file, so the first column is named "subjectID" correctly.
+covar <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/Check in 1/GSE85307_covar.csv", show_col_types = FALSE, name_repair = "unique_quiet")
+
+# gene expression: rows = probe IDs, columns = samples (GEO IDs).
+# the first column has no name in the file, so rename it PROBEID.
+geneExp <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/Check in 1/GSE85307_geneExpression.csv", show_col_types = FALSE,name_repair = "unique_quiet") %>%
+  rename(PROBEID = 1)
+
+# linker file: probe ID -> gene name
+geneNames <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/Check in 1/GSE85307_geneNames.csv", show_col_types = FALSE, name_repair = "unique_quiet")
+
+dim(covar)
+dim(geneExp)   
+
+```
+
+
+## Clean the covariates
+
+Each covariate value (except the IDs) has a text label in front of it, like `"age_years: 31...."` or `"pregnancy_condition: Normal"`. I have to remove everything up to and including the `": "` and then convert to the right type of variable.
+```{r clean-covar}
+# Look at the raw format first
+head(covar$mat_age_yrs, 3)
+
+# columns 3 to 10 have the "label: value"
+for (col in names(covar)[3:10]) {
+  covar[[col]] <- sub(".*: ", "", covar[[col]])   # keep only the part after ":"
+} # Claude helped with this cleaning code
+
+# convert from text to numbers
+numVars <- c("mat_age_yrs", "delivery_gestAge_wks",
+             "sampleCollection_gestAge_wks", "mat_BMI", "mat_vitD")
+for (col in numVars) {
+  covar[[col]] <- as.numeric(covar[[col]])
+}
+
+# convert categorical variables to factors with clear labels (Claude helped here)
+covar$preg_preeclampsia <- factor(covar$preg_preeclampsia,
+                                  levels = c("Normal", "Preeclampsia"))
+covar$mat_asthma <- factor(covar$mat_asthma, levels = c(0, 1),
+                           labels = c("Healthy", "Asthma"))
+covar$batch_Microarray <- factor(covar$batch_Microarray)
+
+# derived categorical variable: obesity status from BMI (WHO: BMI >= 30)
+covar$obesity <- factor(ifelse(covar$mat_BMI >= 30, "Obese", "Not obese"),
+                        levels = c("Not obese", "Obese"))
+
+# confirm no missing values were created by the conversions (Claude helped here)
+colSums(is.na(covar))
+summary(covar[, c(numVars, "preg_preeclampsia", "obesity")])
+```
+
+
+
+## Match the probes to the gene names
+```{r}
+# Claude helped me choose which functions to apply for this section given
+# my R language is still developing
+
+# confirm every probe in the expression data has a gene name in the linker file
+all(geneExp$PROBEID %in% geneNames$PROBEID)   # expect TRUE
+
+geneExp <- geneExp %>%
+  left_join(geneNames, by = "PROBEID") %>%   # add a GENE column
+  relocate(GENE, .after = PROBEID)           # move it next to PROBEID
+
+# count duplicated gene names (each gene should be one probe)
+sum(duplicated(geneExp$GENE))   # expect 0
+
+```
+
+
+## Merge 
+
+The expression data has samples as columns, while the covariates have samples as rows. I reshaped the expression data to long format (one row per gene per sample) and joined CXCR2 to the covariates to verify the merge.
+```{r merge}
+gene <- "CXCR2"
+
+geneLong <- geneExp %>%
+  select(-PROBEID) %>%
+  pivot_longer(cols = -GENE, names_to = "geoID", values_to = "expression")
+
+dat <- geneLong %>%
+  filter(GENE == gene) %>%
+  inner_join(covar, by = "geoID")
+```
+
+## Verify
+```{r}
+# Claude helped with the code below:
+# confirm the same samples are in both files
+setequal(covar$geoID, unique(geneLong$geoID))   # expect TRUE
+
+# confirm no one was lost or duplicated in the join
+nrow(dat)                        # expect 157
+sum(duplicated(dat$geoID))       # expect 0
+
+# the joined value should match the raw value
+check_id <- dat$geoID[1]
+raw_value <- geneExp %>% filter(GENE == gene) %>% pull(all_of(check_id))
+dat$expression[1] == raw_value   # expect TRUE
+
+```
+
+
+## Plot theme
+```{r}
+theme_pub <- theme_classic(base_size = 12) +
+  theme(axis.title   = element_text(face = "bold"),
+        axis.text    = element_text(color = "#280003"),
+        legend.title = element_text(face = "bold"),
+        legend.position = "top")
+
+obesityColors <- c("Not obese" = "#4E8098", "Obese" = "#86BA90")
+```
+
+
+## Combine all genes with covariates 
+```{r}
+# join all genes to the covariates so the function can pull out any gene
+datAll <- geneLong %>%
+  inner_join(covar, by = "geoID")
+
+nrow(datAll)   # expect 78500
+```
+
+## Plotting function
+```{r}
+plotGenes <- function(dataAll, genes) {
+  for (g in genes) {
+    geneData <- dataAll %>% filter(GENE == g)
+
+    # histogram
+    histPlot <- ggplot(geneData, aes(x = expression)) +
+      geom_histogram(bins = 25, fill = "#713E5A", color = "white") +
+      labs(x = paste(g, "expression (log2 normalized intensity)"),
+           y = "Number of participants") +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  # bars sit on the axis
+      theme_pub
+    print(histPlot)
+
+    # scatterplot
+    scatterPlot <- ggplot(geneData, aes(x = mat_vitD, y = expression)) +
+      geom_point(color = "#713E5A", alpha = 0.7, size = 2) +
+      geom_smooth(method = "lm", se = TRUE, color = "#280003", linewidth = 0.8) +
+      labs(x = "Maternal 25-hydroxyvitamin D (ng/mL)",
+           y = paste(g, "expression (log2)")) +
+      theme_pub
+    print(scatterPlot)
+
+    # boxplot
+    boxPlot <- ggplot(geneData, aes(x = preg_preeclampsia, y = expression, fill = obesity)) +
+      geom_boxplot(outlier.shape = NA, width = 0.6,
+                   position = position_dodge(width = 0.7)) +
+      # show the participants on top of the boxes (Claude assisted)
+      geom_point(position = position_jitterdodge(jitter.width = 0.15,
+                                                 dodge.width = 0.7,
+                                                 seed = 123),  # added a seed
+                 size = 1.2, alpha = 0.5, show.legend = FALSE) +
+      scale_fill_manual(values = obesityColors, name = "Obesity status") +
+      labs(x = "Pregnancy outcome", y = paste(g, "expression (log2)")) +
+      theme_pub
+    print(boxPlot)
+
+  }
+}    
+```
+
+## Figure caption
+```{r}
+# Claude helped figure this code out
+# genes to plot
+myGenes <- c("CXCR2", "NR0B2", "TRIB1")
+
+# build one caption per plot, in the order the function prints them
+plotCaps <- c()   # start with an empty list of captions
+for (g in myGenes) {
+  plotCaps <- c(plotCaps,
+  paste0("\\textbf{Distribution of ", g, " expression.} ",
+         "Expression values from 157 pregnant participants are log2-transformed ",
+         "normalized intensities from the Affymetrix Human Gene 1.0 ST Array, ",
+         "measured in blood collected at 10--19 weeks' gestation."),
+    paste0("\\textbf{Maternal vitamin D vs. ", g, " expression.} Each point is ",
+          "one participant (n = 157). The black line is a linear regression fit, ",
+          "and the gray band is its 95\\% confidence interval."),
+    paste0("\\textbf{", g, " expression by pregnancy outcome and obesity status.} 
+           Obesity was defined as BMI $\\geq$ 30 kg/m². Boxes show the median and ",
+           "interquartile range, whiskers extend to 1.5 × IQR, and points are ",
+           "individual participants. Group sizes: Normal/not obese n = 79, ",  
+           "Normal/obese n = 31, Preeclampsia/not obese n = 21, Preeclampsia/obese ",
+           "n = 26.")
+  )
+}
+
+length(plotCaps)   # expect 9
+```
+
+## Plots
+```{r, message=FALSE, fig.cap = plotCaps}
+# run the function
+plotGenes(datAll, myGenes)
+```
+
+
