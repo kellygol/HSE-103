@@ -19,9 +19,9 @@ library(tidyverse)
 
 Resources Used: Claude (Anthropic) was used in this assignment as noted in the code comments throughout. It was also used to help select genes of personal interest, improve organization, and debug code errors.
 
-Variables Chosen: I’m looking at CXCR2, which is a receptor on neutrophils that responds to the IL-8 inflammatory signal. Inflammation is thought to play a role in preeclampsia, which is what made CXCR2 an interesting gene to explore. My continuous covariate is maternal vitamin D (mat_vitD), measured as 25-hydroxyvitamin D in ng/mL at baseline. The two categorical covariates are pregnancy outcome (preg_preeclampsia: normal vs. preeclampsia) and obesity status. I created obesity status from maternal BMI (mat_BMI), using the WHO cut point: anyone with a BMI of 30 kg/m² or higher is classified as obese.
+Variables Chosen: I’m looking at *CXCR2*, which is a receptor on neutrophils that responds to the IL-8 inflammatory signal. Inflammation is thought to play a role in preeclampsia, which is what made *CXCR2* an interesting gene to explore. My continuous covariate is maternal vitamin D (mat_vitD), measured as 25-hydroxyvitamin D in ng/mL at baseline. The two categorical covariates are pregnancy outcome (preg_preeclampsia: normal vs. preeclampsia) and obesity status. I created obesity status from maternal BMI (mat_BMI), using the WHO cut point: anyone with a BMI of 30 kg/m² or higher is classified as obese.
 
-For submission 2, I added NR0B2 and TRIB1. NR0B2 is a nuclear receptor that helps regulate bile acid, cholesterol, and glucose metabolism, and variants in it have been linked to obesity and early-onset type 2 diabetes. TRIB1 is a signaling regulator that controls fat production in the liver, and large genetic studies have tied it to blood lipid levels and fatty liver disease. Both connect to my broader interest in PFAS, which are known to disrupt nuclear-receptor signaling and are consistently associated with higher cholesterol. I chose these genes to contrast with CXCR2: CXCR2 is an immune gene highly expressed in the neutrophils in maternal blood, NR0B2 is a metabolic gene expressed mainly in the liver, and TRIB1 spans both, with roles in lipid metabolism and in immune cells. Comparing the three lets me see whether the vitamin D and obesity patterns seen for CXCR2 also appear in metabolic genes. Because NR0B2 is expressed mostly in the liver, I expected its levels in blood to be low and to vary little across participants.
+For submission 2, I added *NR0B2* and *TRIB1*. *NR0B2* is a nuclear receptor that helps regulate bile acid, cholesterol, and glucose metabolism, and variants in it have been linked to obesity and early-onset type 2 diabetes. *TRIB1* is a signaling regulator that controls fat production in the liver, and large genetic studies have tied it to blood lipid levels and fatty liver disease. Both connect to my broader interest in PFAS, which are known to disrupt nuclear-receptor signaling and are consistently associated with higher cholesterol. I chose these genes to contrast with *CXCR2*: *CXCR2* is an immune gene highly expressed in the neutrophils in maternal blood, *NR0B2* is a metabolic gene expressed mainly in the liver, and *TRIB1* spans both, with roles in lipid metabolism and in immune cells. Comparing the three lets me see whether the vitamin D and obesity patterns seen for *CXCR2* also appear in metabolic genes. Because *NR0B2* is expressed mostly in the liver, I expected its levels in blood to be low and to vary little across participants.
 
 ## Load the data
 ```{r}
@@ -101,7 +101,7 @@ sum(duplicated(geneExp$GENE))   # expect 0
 
 ## Merge 
 
-The expression data has samples as columns, while the covariates have samples as rows. I reshaped the expression data to long format (one row per gene per sample) and joined CXCR2 to the covariates to verify the merge.
+The expression data has samples as columns, while the covariates have samples as rows. I reshaped the expression data to long format (one row per gene per sample) and joined *CXCR2* to the covariates to verify the merge.
 ```{r merge}
 gene <- "CXCR2"
 
@@ -162,7 +162,7 @@ plotGenes <- function(dataAll, genes) {
     # histogram
     histPlot <- ggplot(geneData, aes(x = expression)) +
       geom_histogram(bins = 25, fill = "#713E5A", color = "white") +
-      labs(x = paste(g, "expression (log2 normalized intensity)"),
+      labs(x = bquote(italic(.(g)) ~ "expression (log2 normalized intensity)"),
            y = "Number of participants") +
       scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  # bars sit on the axis
       theme_pub
@@ -173,7 +173,7 @@ plotGenes <- function(dataAll, genes) {
       geom_point(color = "#713E5A", alpha = 0.7, size = 2) +
       geom_smooth(method = "lm", se = TRUE, color = "#280003", linewidth = 0.8) +
       labs(x = "Maternal 25-hydroxyvitamin D (ng/mL)",
-           y = paste(g, "expression (log2)")) +
+           y = bquote(italic(.(g)) ~ "expression (log2)")) +
       theme_pub
     print(scatterPlot)
 
@@ -205,15 +205,15 @@ myGenes <- c("CXCR2", "NR0B2", "TRIB1")
 plotCaps <- c()   # start with an empty list of captions
 for (g in myGenes) {
   plotCaps <- c(plotCaps,
-  paste0("\\textbf{Distribution of ", g, " expression.} ",
+    paste0("\\textbf{Distribution of \\textit{", g, "} expression.} ",
          "Expression values from 157 pregnant participants are log2-transformed ",
          "normalized intensities from the Affymetrix Human Gene 1.0 ST Array, ",
          "measured in blood collected at 10--19 weeks' gestation."),
-    paste0("\\textbf{Maternal vitamin D vs. ", g, " expression.} Each point is ",
-          "one participant (n = 157). The black line is a linear regression fit, ",
-          "and the gray band is its 95\\% confidence interval."),
-    paste0("\\textbf{", g, " expression by pregnancy outcome and obesity status.} 
-           Obesity was defined as BMI $\\geq$ 30 kg/m². Boxes show the median and ",
+    paste0("\\textbf{Maternal vitamin D vs. \\textit{", g, "} expression.} Each ",
+          "point is one participant (n = 157). The black line is a linear ",
+          "regression fit, and the gray band is its 95\\% confidence interval."),
+    paste0("\\textbf{\\textit{", g, "} expression by pregnancy outcome and obesity status.} ",
+       "Obesity was defined as BMI $\\geq$ 30 kg/m². Boxes show the median and ",
            "interquartile range, whiskers extend to 1.5 × IQR, and points are ",
            "individual participants. Group sizes: Normal/not obese n = 79, ",  
            "Normal/obese n = 31, Preeclampsia/not obese n = 21, Preeclampsia/obese ",
