@@ -1,0 +1,384 @@
+---
+title: "Golden_Kelly_Final_Submission"
+author: "Kelly Golden"
+date: "2026-11-11"
+output:
+  pdf_document:
+    fig_caption: true
+    latex_engine: xelatex
+    keep_tex: true
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(tidyverse)
+library(pheatmap)
+
+```
+
+Resources Used: Claude (Anthropic) was used in this assignment as noted in the code comments throughout. It was also used to help select genes of personal interest, draft the gene rationale and variable descriptions, improve organization, and debug code errors.
+
+Variables Chosen: My primary gene is *CXCR2*, a receptor on neutrophils that responds to the inflammatory signal IL-8. Inflammation is thought to play a role in preeclampsia, which made *CXCR2* an interesting gene to explore. My continuous covariate is maternal vitamin D (mat_vitD), measured as 25-hydroxyvitamin D in ng/mL at baseline. My two categorical covariates are pregnancy outcome (preg_preeclampsia: normal vs. preeclampsia) and obesity status, which I derived from maternal BMI (mat_BMI) using the WHO cut point of 30 kg/m² or higher.
+
+Additional genes: I added *NR0B2* and *TRIB1* to contrast with *CXCR2*. *NR0B2* is a nuclear receptor, expressed mainly in the liver, that helps regulate bile acid, cholesterol, and glucose metabolism; variants in it have been linked to obesity and early-onset type 2 diabetes. *TRIB1* controls fat production in the liver and is also active in immune cells, so it bridges the other two; large genetic studies have tied it to blood lipid levels and fatty liver disease. Both connect to my broader interest in PFAS, which disrupt nuclear-receptor signaling and are consistently associated with higher cholesterol. Comparing the three lets me see whether the vitamin D and obesity patterns seen for *CXCR2* also appear in metabolic genes.
+
+Heatmap and forest plot: For the heatmap, I selected seven more genes related to inflammation (*LYN*, *PRKCD*, *AQP9*, *FOSL2*) and lipid metabolism (*ACSL4*, *EPHX2*, *PEX12*), choosing ones that varied enough across participants to visualize. For my additional plot, I used a forest plot to test whether obesity explains the association between vitamin D and expression of these ten genes.
+
+## Load the data
+```{r}
+
+# read_csv() automatically strips the invisible character (BOM) at the start
+# of the covariate file, so the first column is named "subjectID" correctly.
+covar <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/Check in 1/GSE85307_covar.csv", show_col_types = FALSE, name_repair = "unique_quiet")
+
+# gene expression: rows = probe IDs, columns = samples (GEO IDs).
+# the first column has no name in the file, so rename it PROBEID.
+geneExp <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/Check in 1/GSE85307_geneExpression.csv", show_col_types = FALSE,name_repair = "unique_quiet") %>%
+  rename(PROBEID = 1)
+
+# linker file: probe ID -> gene name
+geneNames <- read_csv("/Users/kellygolden/Library/CloudStorage/OneDrive-DartmouthCollege/HSE 103/Final Project/Check in 1/GSE85307_geneNames.csv", show_col_types = FALSE, name_repair = "unique_quiet")
+
+dim(covar)
+dim(geneExp)   
+
+```
+
+
+## Clean the covariates
+
+Each covariate value (except the IDs) has a text label in front of it, like `"age_years: 31...."` or `"pregnancy_condition: Normal"`. I have to remove everything up to and including the `": "` and then convert to the right type of variable.
+```{r clean-covar}
+# Look at the raw format first
+head(covar$mat_age_yrs, 3)
+
+# columns 3 to 10 have the "label: value"
+for (col in names(covar)[3:10]) {
+  covar[[col]] <- sub(".*: ", "", covar[[col]])   # keep only the part after ":"
+} # Claude helped with this cleaning code
+
+# convert from text to numbers
+numVars <- c("mat_age_yrs", "delivery_gestAge_wks",
+             "sampleCollection_gestAge_wks", "mat_BMI", "mat_vitD")
+for (col in numVars) {
+  covar[[col]] <- as.numeric(covar[[col]])
+}
+
+# convert categorical variables to factors with clear labels (Claude helped here)
+covar$preg_preeclampsia <- factor(covar$preg_preeclampsia,
+                                  levels = c("Normal", "Preeclampsia"))
+covar$mat_asthma <- factor(covar$mat_asthma, levels = c(0, 1),
+                           labels = c("Healthy", "Asthma"))
+covar$batch_Microarray <- factor(covar$batch_Microarray)
+
+# derived categorical variable: obesity status from BMI (WHO: BMI >= 30)
+covar$obesity <- factor(ifelse(covar$mat_BMI >= 30, "Obese", "Not obese"),
+                        levels = c("Not obese", "Obese"))
+
+# confirm no missing values were created by the conversions (Claude helped here)
+colSums(is.na(covar))
+summary(covar[, c(numVars, "preg_preeclampsia", "obesity")])
+```
+
+
+
+## Match the probes to the gene names
+```{r}
+# Claude helped me choose which functions to apply for this section given
+# my R language is still developing
+
+# confirm every probe in the expression data has a gene name in the linker file
+all(geneExp$PROBEID %in% geneNames$PROBEID)   # expect TRUE
+
+geneExp <- geneExp %>%
+  left_join(geneNames, by = "PROBEID") %>%   # add a GENE column
+  relocate(GENE, .after = PROBEID)           # move it next to PROBEID
+
+# count duplicated gene names (each gene should be one probe)
+sum(duplicated(geneExp$GENE))   # expect 0
+
+```
+
+
+## Merge 
+
+The expression data has samples as columns, while the covariates have samples as rows. I reshaped the expression data to long format (one row per gene per sample) and joined *CXCR2* to the covariates to verify the merge.
+```{r merge}
+gene <- "CXCR2"
+
+geneLong <- geneExp %>%
+  select(-PROBEID) %>%
+  pivot_longer(cols = -GENE, names_to = "geoID", values_to = "expression")
+
+dat <- geneLong %>%
+  filter(GENE == gene) %>%
+  inner_join(covar, by = "geoID")
+```
+
+## Verify
+```{r}
+# Claude helped with the code below:
+# confirm the same samples are in both files
+setequal(covar$geoID, unique(geneLong$geoID))   # expect TRUE
+
+# confirm no one was lost or duplicated in the join
+nrow(dat)                        # expect 157
+sum(duplicated(dat$geoID))       # expect 0
+
+# the joined value should match the raw value
+check_id <- dat$geoID[1]
+raw_value <- geneExp %>% filter(GENE == gene) %>% pull(all_of(check_id))
+dat$expression[1] == raw_value   # expect TRUE
+
+```
+
+
+## Plot theme
+```{r}
+theme_pub <- theme_classic(base_size = 12) +
+  theme(axis.title   = element_text(face = "bold"),
+        axis.text    = element_text(color = "#280003"),
+        legend.title = element_text(face = "bold"),
+        legend.position = "top")
+
+obesityColors <- c("Not obese" = "#4E8098", "Obese" = "#86BA90")
+```
+
+
+## Combine all genes with covariates 
+```{r}
+# join all genes to the covariates so the function can pull out any gene
+datAll <- geneLong %>%
+  inner_join(covar, by = "geoID")
+
+nrow(datAll)   # expect 78500
+```
+
+## Plotting function
+```{r}
+plotGenes <- function(dataAll, genes) {
+  for (g in genes) {
+    geneData <- dataAll %>% filter(GENE == g)
+
+    # histogram
+    histPlot <- ggplot(geneData, aes(x = expression)) +
+      geom_histogram(bins = 25, fill = "#713E5A", color = "white") +
+      labs(x = bquote(bolditalic(.(g)) ~
+                        bold("expression (log2 normalized intensity)")),
+           y = "Number of participants") +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  # bars sit on the axis
+      theme_pub
+    print(histPlot)
+
+    # scatterplot
+    scatterPlot <- ggplot(geneData, aes(x = mat_vitD, y = expression)) +
+      geom_point(color = "#713E5A", alpha = 0.7, size = 2) +
+      geom_smooth(method = "lm", se = TRUE, color = "#280003", linewidth = 0.8) +
+      labs(x = "Maternal 25-hydroxyvitamin D (ng/mL)",
+           y = bquote(bolditalic(.(g)) ~ bold("expression (log2)"))) +
+      theme_pub
+    print(scatterPlot)
+
+    # boxplot
+    boxPlot <- ggplot(geneData, aes(x = preg_preeclampsia, y = expression, fill = obesity)) +
+      geom_boxplot(outlier.shape = NA, width = 0.6,
+                   position = position_dodge(width = 0.7)) +
+      # show the participants on top of the boxes (Claude assisted)
+      geom_point(position = position_jitterdodge(jitter.width = 0.15,
+                                                 dodge.width = 0.7,
+                                                 seed = 123),  # added a seed
+                 size = 1.2, alpha = 0.5, show.legend = FALSE) +
+      scale_fill_manual(values = obesityColors, name = "Obesity status") +
+      labs(x = "Pregnancy outcome", y = bquote(bolditalic(.(g)) ~ bold("expression (log2)"))) +
+      theme_pub
+    print(boxPlot)
+
+  }
+}    
+```
+
+## Figure caption
+```{r}
+# Claude helped figure this code out
+# genes to plot
+myGenes <- c("CXCR2", "NR0B2", "TRIB1")
+
+# build one caption per plot, in the order the function prints them
+plotCaps <- c()   # start with an empty list of captions
+for (g in myGenes) {
+  plotCaps <- c(plotCaps,
+    paste0("\\textbf{Distribution of \\textit{", g, "} expression.} ",
+         "Expression values from 157 pregnant participants are log2-transformed ",
+         "normalized intensities from the Affymetrix Human Gene 1.0 ST Array, ",
+         "measured in blood collected at 10--19 weeks' gestation."),
+    paste0("\\textbf{Maternal vitamin D vs. \\textit{", g, "} expression.} Each ",
+          "point is one participant (n = 157). The black line is a linear ",
+          "regression fit, and the gray band is its 95\\% confidence interval."),
+    paste0("\\textbf{\\textit{", g, "} expression by pregnancy outcome and obesity status.} ",
+       "Obesity was defined as BMI $\\geq$ 30 kg/m². Boxes show the median and ",
+           "interquartile range, whiskers extend to 1.5 × IQR, and points are ",
+           "individual participants. Group sizes: Normal/not obese n = 79, ",  
+           "Normal/obese n = 31, Preeclampsia/not obese n = 21, Preeclampsia/obese ",
+           "n = 26.")
+  )
+}
+
+length(plotCaps)   # expect 9
+```
+
+## Box, Histogram, and Scatterplots
+```{r plots, message=FALSE, fig.cap = plotCaps}
+# run the function
+plotGenes(datAll, myGenes)
+```
+
+## Table 1 prep (Summary Statistics)
+```{r}
+# Claude helped figure this code out
+
+# summary statistics for Table 1: maternal age, gestational age at delivery,
+# maternal vitamin D (mean and SD), and obesity (n and %),
+# stratified by pregnancy outcome
+summaryTable1 <- covar %>% 
+  group_by(preg_preeclampsia) %>% 
+  summarise(n = n(),
+            age_mean     = mean(mat_age_yrs),
+            age_sd       = sd(mat_age_yrs),
+            gestAge_mean = mean(delivery_gestAge_wks),
+            gestAge_sd   = sd(delivery_gestAge_wks),
+            vitD_mean = mean(mat_vitD),
+            vitD_sd   = sd(mat_vitD),
+            obese_n   = sum(obesity == "Obese"),
+            obese_pct = mean(obesity == "Obese") * 100)
+
+# print rounded to one decimal place
+summaryTable1 %>% mutate(across(where(is.double), ~ round(.x, 1)))
+
+```
+
+## Heatmap
+```{r heatmap, fig.width = 8, fig.height = 5, fig.cap = "\\textbf{Expression of ten inflammation- and metabolism-related genes across 157 participants.} Colors show gene expression z-scores (each gene scaled across participants; values beyond ±3 shown at the darkest color). Genes and participants were clustered by hierarchical clustering (Euclidean distance, complete linkage). Tracking bars show pregnancy outcome and obesity status (BMI $\\geq$ 30 kg/m$^2$)."}
+# Claude helped figure this code out
+
+# 10 genes for the heatmap
+heatGenes <- c("CXCR2", "LYN", "PRKCD", "AQP9", "FOSL2",
+               "TRIB1", "NR0B2", "ACSL4", "EPHX2", "PEX12")
+
+heatMat <- geneExp %>%
+  filter(GENE %in% heatGenes) %>%      # keep only the 10 genes
+  select(-PROBEID) %>%                 # remove the probe ID column
+  column_to_rownames("GENE") %>%       # gene names become row names
+  as.matrix()                          # convert to a numeric matrix
+
+dim(heatMat) # expect 10 157
+
+# tracking-bar annotations: one row per participant, matched to heatMat columns
+annotCol <- covar %>%
+  select(geoID, preg_preeclampsia, obesity) %>%
+  rename(Preeclampsia = preg_preeclampsia,   # nicer names for the legend
+         Obesity = obesity) %>%
+  column_to_rownames("geoID")
+
+# put the rows in the same order as the heatmap columns
+annotCol <- annotCol[colnames(heatMat), ]
+
+# check the order matches exactly
+all(rownames(annotCol) == colnames(heatMat)) # expect TRUE
+
+# colors for the tracking bars (reuse obesity colors so all figures match)
+annotColors <- list(
+  Preeclampsia = c("Normal" = "#D9D9D9", "Preeclampsia" = "#713E5A"),
+  Obesity      = obesityColors
+)
+
+# color scale for expression: purple (low) -> white (average) -> orange (high)
+heatColors <- colorRampPalette(c("#5E3C99", "white", "#E66101"))(100)
+
+pheatmap(heatMat,
+         scale = "row",               # z-score each gene across participants
+         color = heatColors,
+         clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean",
+         clustering_method = "complete",
+         annotation_col = annotCol, 
+         annotation_colors = annotColors,
+         breaks = seq(-3, 3, length.out = 101),
+         show_colnames = FALSE,        # hide participant IDs
+         labels_row = as.expression(lapply(rownames(heatMat),
+                                           function(x) bquote(italic(.(x))))),
+         border_color = NA)
+```
+
+## Forest plot
+```{r forest, fig.width = 7, fig.height = 5, fig.cap = "\\textbf{Association between maternal vitamin D and expression of ten inflammation- and metabolism-related genes, before and after adjustment for obesity.} Points show the estimated change in log2 expression per 10 ng/mL increase in 25-hydroxyvitamin D from linear regression; lines show 95\\% confidence intervals. Purple: unadjusted model; gray: model adjusted for obesity (BMI $\\geq$ 30 kg/m$^2$). The dashed line marks no association. n = 157."}
+
+# Claude helped figure this code out
+# vitamin D per 10 ng/mL so regression estimates are easier to read
+datAll <- datAll %>% mutate(vitD10 = mat_vitD / 10)
+
+# fit unadjusted and obesity-adjusted models for each gene,
+# keeping the vitamin D estimate and 95% CI
+forestDat <- data.frame()   # start with an empty data frame
+
+for (g in heatGenes) {
+  geneData <- datAll %>% filter(GENE == g)
+
+  m1 <- lm(expression ~ vitD10, data = geneData)           # unadjusted
+  m2 <- lm(expression ~ vitD10 + obesity, data = geneData) # adjusted for obesity
+
+  forestDat <- rbind(forestDat,
+    data.frame(gene = g, model = "Unadjusted",
+               estimate = coef(m1)["vitD10"],
+               lower = confint(m1)["vitD10", 1],
+               upper = confint(m1)["vitD10", 2]),
+    data.frame(gene = g, model = "Adjusted for obesity",
+               estimate = coef(m2)["vitD10"],
+               lower = confint(m2)["vitD10", 1],
+               upper = confint(m2)["vitD10", 2]))
+}
+
+nrow(forestDat)   # expect 20
+
+# order genes top to bottom as in heatGenes, and fix the model order
+forestDat <- forestDat %>%
+  mutate(gene  = factor(gene, levels = rev(heatGenes)),
+         model = factor(model, levels = c("Adjusted for obesity", "Unadjusted")))
+
+forestPlot <- ggplot(forestDat, aes(x = gene, y = estimate, color = model)) +
+  #line of no association
+  geom_hline(yintercept = 0, linetype = "dashed", color = "#280003") +
+  geom_pointrange(aes(ymin = lower, ymax = upper),
+                  # dot= estimate, line = 95% CI
+                  position = position_dodge(width = 0.4)) +  
+  coord_flip() +      # genes on the side
+  scale_color_manual(values = c("Unadjusted" = "#713E5A",
+                                "Adjusted for obesity" = "gray50"),
+                     breaks = c("Unadjusted", "Adjusted for obesity"),
+                     name = NULL) +
+  scale_y_continuous(breaks = seq(-0.04, 0.12, by = 0.02)) +
+  labs(x = NULL,
+       y = "Change in expression (log2) per 10 ng/mL vitamin D (95% CI)") +
+  
+  theme_pub +
+  theme(axis.text.y = element_text(face = "italic"))
+
+forestPlot
+
+ggsave("forest_plot.pdf", forestPlot, width = 7, height = 5)
+
+```
+
+
+
+
+## Software Version
+```{r}
+R.version.string
+packageVersion("tidyverse"); packageVersion("ggplot2"); packageVersion("pheatmap")
+
+```
+
+
