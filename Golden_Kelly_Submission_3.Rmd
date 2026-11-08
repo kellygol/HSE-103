@@ -260,7 +260,7 @@ summaryTable1 %>% mutate(across(where(is.double), ~ round(.x, 1)))
 ```
 
 ## Heatmap
-```{r heatmap, fig.width = 8, fig.height = 5, fig.cap = "\\textbf{Expression of ten inflammation- and metabolism-related genes across 157 participants.} Colors show gene expression z-scores (each gene scaled across participants; values beyond $\\pm$3 shown at the darkest color). Genes and participants were clustered by hierarchical clustering (Euclidean distance, complete linkage). Tracking bars show pregnancy outcome and obesity status (BMI $\\geq$ 30 kg/m$^2$)."}
+```{r heatmap, fig.width = 8, fig.height = 5, fig.cap = "\\textbf{Expression of ten inflammation- and metabolism-related genes across 157 participants.} Colors show gene expression z-scores (each gene scaled across participants; values beyond ±3 shown at the darkest color). Genes and participants were clustered by hierarchical clustering (Euclidean distance, complete linkage). Tracking bars show pregnancy outcome and obesity status (BMI $\\geq$ 30 kg/m$^2$)."}
 # Claude helped figure this code out
 
 # 10 genes for the heatmap
