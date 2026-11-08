@@ -46,10 +46,13 @@ hist(dirty_file1$C1)
 hist(dirty_file1$C4)
 hist(dirty_file1$C8)
 hist(dirty_file1$C7)
+
+
 ```
 
-
+2. Variables C1-C8 contain the y coordinates of data points that belong to each respective group. Convert the data set to a long format such that you have 3 variables: 2 continuous variables (x and y) and one factor variable that contains group identity (C1-C8). Make sure to restrict your data set to only include complete cases for all 3 variables.
 ```{r}
+
 
 ```
 
