@@ -6,6 +6,7 @@ output:
   pdf_document:
     fig_caption: true
     latex_engine: xelatex
+    keep_tex: true
 ---
 
 ```{r setup, include=FALSE}
@@ -18,11 +19,13 @@ library(pheatmap)
 
 ```
 
-Resources Used: Claude (Anthropic) was used in this assignment as noted in the code comments throughout. It was also used to help select genes of personal interest, improve organization, and debug code errors.
+Resources Used: Claude (Anthropic) was used in this assignment as noted in the code comments throughout. It was also used to help select genes of personal interest, draft the gene rationale and variable descriptions, improve organization, and debug code errors.
 
-Variables Chosen: I’m looking at *CXCR2*, which is a receptor on neutrophils that responds to the IL-8 inflammatory signal. Inflammation is thought to play a role in preeclampsia, which is what made *CXCR2* an interesting gene to explore. My continuous covariate is maternal vitamin D (mat_vitD), measured as 25-hydroxyvitamin D in ng/mL at baseline. The two categorical covariates are pregnancy outcome (preg_preeclampsia: normal vs. preeclampsia) and obesity status. I created obesity status from maternal BMI (mat_BMI), using the WHO cut point: anyone with a BMI of 30 kg/m² or higher is classified as obese.
+Variables Chosen: My primary gene is *CXCR2*, a receptor on neutrophils that responds to the inflammatory signal IL-8. Inflammation is thought to play a role in preeclampsia, which made *CXCR2* an interesting gene to explore. My continuous covariate is maternal vitamin D (mat_vitD), measured as 25-hydroxyvitamin D in ng/mL at baseline. My two categorical covariates are pregnancy outcome (preg_preeclampsia: normal vs. preeclampsia) and obesity status, which I derived from maternal BMI (mat_BMI) using the WHO cut point of 30 kg/m² or higher.
 
-For submission 2, I added *NR0B2* and *TRIB1*. *NR0B2* is a nuclear receptor that helps regulate bile acid, cholesterol, and glucose metabolism, and variants in it have been linked to obesity and early-onset type 2 diabetes. *TRIB1* is a signaling regulator that controls fat production in the liver, and large genetic studies have tied it to blood lipid levels and fatty liver disease. Both connect to my broader interest in PFAS, which are known to disrupt nuclear-receptor signaling and are consistently associated with higher cholesterol. I chose these genes to contrast with *CXCR2*: *CXCR2* is an immune gene highly expressed in the neutrophils in maternal blood, *NR0B2* is a metabolic gene expressed mainly in the liver, and *TRIB1* spans both, with roles in lipid metabolism and in immune cells. Comparing the three lets me see whether the vitamin D and obesity patterns seen for *CXCR2* also appear in metabolic genes. Because *NR0B2* is expressed mostly in the liver, I expected its levels in blood to be low and to vary little across participants.
+Additional genes: I added *NR0B2* and *TRIB1* to contrast with *CXCR2*. *NR0B2* is a nuclear receptor, expressed mainly in the liver, that helps regulate bile acid, cholesterol, and glucose metabolism; variants in it have been linked to obesity and early-onset type 2 diabetes. *TRIB1* controls fat production in the liver and is also active in immune cells, so it bridges the other two; large genetic studies have tied it to blood lipid levels and fatty liver disease. Both connect to my broader interest in PFAS, which disrupt nuclear-receptor signaling and are consistently associated with higher cholesterol. Comparing the three lets me see whether the vitamin D and obesity patterns seen for *CXCR2* also appear in metabolic genes.
+
+Heatmap and forest plot: For the heatmap, I selected seven more genes related to inflammation (*LYN*, *PRKCD*, *AQP9*, *FOSL2*) and lipid metabolism (*ACSL4*, *EPHX2*, *PEX12*), choosing ones that varied enough across participants to visualize. For my additional plot, I used a forest plot to test whether obesity explains the association between vitamin D and expression of these ten genes.
 
 ## Load the data
 ```{r}
@@ -227,13 +230,14 @@ length(plotCaps)   # expect 9
 ```
 
 ## Box, Histogram, and Scatterplots
-```{r, message=FALSE, fig.cap = plotCaps}
+```{r plots, message=FALSE, fig.cap = plotCaps}
 # run the function
 plotGenes(datAll, myGenes)
 ```
 
 ## Table 1 prep (Summary Statistics)
 ```{r}
+# Claude helped figure this code out
 
 # summary statistics for Table 1: maternal age, gestational age at delivery,
 # maternal vitamin D (mean and SD), and obesity (n and %),
@@ -257,7 +261,7 @@ summaryTable1 %>% mutate(across(where(is.double), ~ round(.x, 1)))
 
 ## Heatmap
 ```{r heatmap, fig.width = 8, fig.height = 5, fig.cap = "\\textbf{Expression of ten inflammation- and metabolism-related genes across 157 participants.} Colors show gene expression z-scores (each gene scaled across participants; values beyond $\\pm$3 shown at the darkest color). Genes and participants were clustered by hierarchical clustering (Euclidean distance, complete linkage). Tracking bars show pregnancy outcome and obesity status (BMI $\\geq$ 30 kg/m$^2$)."}
-
+# Claude helped figure this code out
 
 # 10 genes for the heatmap
 heatGenes <- c("CXCR2", "LYN", "PRKCD", "AQP9", "FOSL2",
@@ -269,7 +273,7 @@ heatMat <- geneExp %>%
   column_to_rownames("GENE") %>%       # gene names become row names
   as.matrix()                          # convert to a numeric matrix
 
-dim(heatMat)   
+dim(heatMat) # expect 10 157
 
 # tracking-bar annotations: one row per participant, matched to heatMat columns
 annotCol <- covar %>%
@@ -282,7 +286,7 @@ annotCol <- covar %>%
 annotCol <- annotCol[colnames(heatMat), ]
 
 # check the order matches exactly
-all(rownames(annotCol) == colnames(heatMat))
+all(rownames(annotCol) == colnames(heatMat)) # expect TRUE
 
 # colors for the tracking bars (reuse obesity colors so all figures match)
 annotColors <- list(
@@ -309,7 +313,9 @@ pheatmap(heatMat,
 ```
 
 ## Forest plot
-```{r forest, fig.width = 7, fig.height = 5}
+```{r forest, fig.width = 7, fig.height = 5, fig.cap = "\\textbf{Association between maternal vitamin D and expression of ten inflammation- and metabolism-related genes, before and after adjustment for obesity.} Points show the estimated change in log2 expression per 10 ng/mL increase in 25-hydroxyvitamin D from linear regression; lines show 95\\% confidence intervals. Purple: unadjusted model; gray: model adjusted for obesity (BMI $\\geq$ 30 kg/m$^2$). The dashed line marks no association. n = 157."}
+
+# Claude helped figure this code out
 # vitamin D per 10 ng/mL so regression estimates are easier to read
 datAll <- datAll %>% mutate(vitD10 = mat_vitD / 10)
 
@@ -368,7 +374,7 @@ ggsave("forest_plot.pdf", forestPlot, width = 7, height = 5)
 
 
 
-## Methods
+## Software Version
 ```{r}
 R.version.string
 packageVersion("tidyverse"); packageVersion("ggplot2"); packageVersion("pheatmap")
